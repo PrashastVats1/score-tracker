@@ -97,9 +97,10 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                     variant="outline"
                     onClick={() => handleAdd(player.name)}
                     disabled={gameEnded || player.score >= 20}
+                    aria-label={`Add points to ${player.name}`}
                     className="w-9 h-9 p-0 hover:bg-emerald-50 hover:border-emerald-300 border-slate-300"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-4 h-4" aria-hidden="true" />
                   </Button>
                   
                   <Select
@@ -124,9 +125,10 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                     variant="outline"
                     onClick={() => handleDeduct(player.name)}
                     disabled={gameEnded || !canDeduct(player, playerInputs[player.name] || 1)}
+                    aria-label={`Deduct points from ${player.name}`}
                     className="w-9 h-9 p-0 hover:bg-red-50 hover:border-red-300 border-slate-300"
                   >
-                    <Minus className="w-4 h-4" />
+                    <Minus className="w-4 h-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -160,9 +162,10 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                       variant="outline"
                       onClick={() => handleAdd(player.name)}
                       disabled={gameEnded || player.score >= 20}
+                      aria-label={`Add points to ${player.name}`}
                       className="w-10 h-10 p-0 hover:bg-emerald-50 hover:border-emerald-300 border-slate-300"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     
                     <Select
@@ -187,9 +190,10 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                       variant="outline"
                       onClick={() => handleDeduct(player.name)}
                       disabled={gameEnded || !canDeduct(player, playerInputs[player.name] || 1)}
+                      aria-label={`Deduct points from ${player.name}`}
                       className="w-10 h-10 p-0 hover:bg-red-50 hover:border-red-300 border-slate-300"
                     >
-                      <Minus className="w-4 h-4" />
+                      <Minus className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

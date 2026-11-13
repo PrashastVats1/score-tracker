@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Trophy, RefreshCw, Download } from 'lucide-react';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -22,6 +22,106 @@ export interface GameAction {
   gameNumber: number;
 }
 
+const GAME_STORAGE_KEY = 'perfect20_game';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isStoredPlayer = (value: unknown): value is Player =>
+  isRecord(value) &&
+  typeof value.name === 'string' &&
+  value.name.trim() !== '' &&
+  typeof value.score === 'number' &&
+  Number.isFinite(value.score);
+
+const parseStoredGameLog = (value: unknown): GameAction[] | null => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+
+  const entries: GameAction[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) return null;
+    if (typeof item.id !== 'string' || typeof item.description !== 'string') return null;
+    if (typeof item.gameNumber !== 'number' || !Number.isFinite(item.gameNumber)) return null;
+
+    const timestamp = new Date(String(item.timestamp));
+    if (Number.isNaN(timestamp.getTime())) return null;
+
+    entries.push({
+      id: item.id,
+      timestamp,
+      description: item.description,
+      gameNumber: item.gameNumber
+    });
+  }
+
+  return entries;
+};
+
+const parseStoredWins = (value: unknown): Record<string, number> | null => {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+
+  const wins: Record<string, number> = {};
+  for (const [name, count] of Object.entries(value)) {
+    if (typeof count !== 'number' || !Number.isFinite(count)) return null;
+    wins[name] = count;
+  }
+  return wins;
+};
+
+type RestoredGameState = {
+  players: Player[];
+  gameLog: GameAction[];
+  wins: Record<string, number>;
+  currentGameNumber: number;
+};
+
+const readStoredGameState = (): { state: RestoredGameState | null; preserveExisting: boolean } => {
+  const savedGame = localStorage.getItem(GAME_STORAGE_KEY);
+  if (!savedGame) {
+    return { state: null, preserveExisting: false };
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(savedGame);
+    if (!isRecord(parsed) || !Array.isArray(parsed.players) || parsed.players.length === 0) {
+      return { state: null, preserveExisting: true };
+    }
+    if (!parsed.players.every(isStoredPlayer)) {
+      return { state: null, preserveExisting: true };
+    }
+
+    const gameLog = parseStoredGameLog(parsed.gameLog);
+    const wins = parseStoredWins(parsed.wins);
+    if (gameLog === null || wins === null) {
+      return { state: null, preserveExisting: true };
+    }
+
+    const currentGameNumber =
+      parsed.currentGameNumber === undefined
+        ? 1
+        : parsed.currentGameNumber;
+
+    if (typeof currentGameNumber !== 'number' || !Number.isFinite(currentGameNumber)) {
+      return { state: null, preserveExisting: true };
+    }
+
+    return {
+      state: {
+        players: parsed.players,
+        gameLog,
+        wins,
+        currentGameNumber
+      },
+      preserveExisting: false
+    };
+  } catch (error) {
+    console.error('Failed to restore Perfect 20 game from localStorage.', error);
+    return { state: null, preserveExisting: true };
+  }
+};
+
 const Perfect20Game = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentPlayer, setCurrentPlayer] = useState('');
@@ -35,29 +135,29 @@ const Perfect20Game = () => {
   const [showWinnerDialog, setShowWinnerDialog] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<'txt'>('txt');
   const [currentGameNumber, setCurrentGameNumber] = useState(1);
+  const skipPersistRef = useRef(false);
 
   // Load game state from localStorage
   useEffect(() => {
-    const savedGame = localStorage.getItem('perfect20_game');
-    if (savedGame) {
-      const gameState = JSON.parse(savedGame);
-      if (gameState.players && gameState.players.length > 0) {
-        setPlayers(gameState.players);
-        setCurrentPlayer(gameState.players[0].name);
-        setTargetPlayer(gameState.players[0].name);
-        setShowSetup(false);
-      }
-      setGameLog(gameState.gameLog?.map((action: any) => ({
-        ...action,
-        timestamp: new Date(action.timestamp)
-      })) || []);
-      setWins(gameState.wins || {});
-      setCurrentGameNumber(gameState.currentGameNumber || 1);
+    const { state, preserveExisting } = readStoredGameState();
+    if (preserveExisting) {
+      skipPersistRef.current = true;
+      return;
     }
+    if (!state) return;
+
+    setPlayers(state.players);
+    setCurrentPlayer(state.players[0].name);
+    setTargetPlayer(state.players[0].name);
+    setShowSetup(false);
+    setGameLog(state.gameLog);
+    setWins(state.wins);
+    setCurrentGameNumber(state.currentGameNumber);
   }, []);
 
   // Save game state to localStorage
   useEffect(() => {
+    if (skipPersistRef.current) return;
     if (players.length > 0) {
       const gameState = {
         players,
@@ -65,7 +165,7 @@ const Perfect20Game = () => {
         wins,
         currentGameNumber
       };
-      localStorage.setItem('perfect20_game', JSON.stringify(gameState));
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(gameState));
     }
   }, [players, gameLog, wins, currentGameNumber]);
 
@@ -88,6 +188,7 @@ const Perfect20Game = () => {
   }, [players, winner, currentGameNumber]);
 
   const handlePlayersSetup = (playerNames: string[]) => {
+    skipPersistRef.current = false;
     const newPlayers = playerNames.map(name => ({ name, score: 0 }));
     setPlayers(newPlayers);
     setCurrentPlayer(newPlayers[0].name);
@@ -264,7 +365,8 @@ const Perfect20Game = () => {
     setShowWinnerDialog(false);
     setActionPoints(1);
     setCurrentGameNumber(1);
-    localStorage.removeItem('perfect20_game');
+    skipPersistRef.current = false;
+    localStorage.removeItem(GAME_STORAGE_KEY);
   };
 
   const closeWinnerDialog = () => {

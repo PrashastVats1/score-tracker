@@ -71,6 +71,23 @@ const PlayerSetupDialog = ({ isOpen, onPlayersSetup }: PlayerSetupDialogProps) =
     }
   };
 
+  const resetToCountStep = () => {
+    setStep('count');
+    setPlayerNames([]);
+    setNameErrors([]);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open) return;
+
+    if (step === 'names') {
+      resetToCountStep();
+      return;
+    }
+
+    window.location.assign('https://hivebluelabs.com/');
+  };
+
   const canProceed = step === 'count' 
     ? playerCount && parseInt(playerCount) >= 2 && parseInt(playerCount) <= 10
     : playerNames.every(name => name.trim() !== '') && nameErrors.every(error => error === '');
@@ -86,7 +103,7 @@ const PlayerSetupDialog = ({ isOpen, onPlayersSetup }: PlayerSetupDialogProps) =
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
+    <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
       <DialogContent className={`sm:max-w-md w-[95vw] ${step === 'count' ? 'h-auto' : 'h-[85vh]'} flex flex-col`}>
         <DialogHeader className="flex-shrink-0 pb-3">
           <DialogTitle className="text-center text-lg">

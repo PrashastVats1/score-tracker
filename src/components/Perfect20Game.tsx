@@ -2,25 +2,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { Trophy, RefreshCw, Download } from 'lucide-react';
 import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import Scoreboard from './Scoreboard';
 import ActionPanel from './ActionPanel';
 import GameLog from './GameLog';
 import WinsTracker from './WinsTracker';
 import PlayerSetupDialog from './PlayerSetupDialog';
 import WinnerDialog from './WinnerDialog';
+import {
+  applyAttempt,
+  restoreTurnState,
+  startNewGameState,
+  type Attempt,
+  type GameAction,
+  type GameSnapshot,
+  type PanelActionType,
+  type Player
+} from '@/lib/game-rules';
 
-export interface Player {
-  name: string;
-  score: number;
-}
-
-export interface GameAction {
-  id: string;
-  timestamp: Date;
-  description: string;
-  gameNumber: number;
-}
+export type { GameAction, Player };
 
 const GAME_STORAGE_KEY = 'perfect20_game';
 
@@ -75,6 +74,9 @@ type RestoredGameState = {
   gameLog: GameAction[];
   wins: Record<string, number>;
   currentGameNumber: number;
+  activePlayerName: string;
+  winner: string | null;
+  playerOrder: string[];
 };
 
 const readStoredGameState = (): { state: RestoredGameState | null; preserveExisting: boolean } => {
@@ -107,12 +109,27 @@ const readStoredGameState = (): { state: RestoredGameState | null; preserveExist
       return { state: null, preserveExisting: true };
     }
 
+    const playerOrder = Array.isArray(parsed.playerOrder) && parsed.playerOrder.every(
+      (name): name is string => typeof name === 'string'
+    ) && parsed.playerOrder.length === parsed.players.length
+      ? parsed.playerOrder
+      : parsed.players.map((player) => player.name);
+
+    const { activePlayerName, winner } = restoreTurnState(
+      parsed.players,
+      parsed.activePlayerName,
+      parsed.winner
+    );
+
     return {
       state: {
         players: parsed.players,
         gameLog,
         wins,
-        currentGameNumber
+        currentGameNumber,
+        activePlayerName,
+        winner,
+        playerOrder
       },
       preserveExisting: false
     };
@@ -125,8 +142,10 @@ const readStoredGameState = (): { state: RestoredGameState | null; preserveExist
 const Perfect20Game = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentPlayer, setCurrentPlayer] = useState('');
+  const [activePlayerName, setActivePlayerName] = useState('');
+  const [playerOrder, setPlayerOrder] = useState<string[]>([]);
   const [targetPlayer, setTargetPlayer] = useState('');
-  const [actionType, setActionType] = useState<'Add to Target' | 'Deduct' | 'Swap' | 'Steal'>('Add to Target');
+  const [actionType, setActionType] = useState<PanelActionType>('Add to Target');
   const [actionPoints, setActionPoints] = useState(1);
   const [gameLog, setGameLog] = useState<GameAction[]>([]);
   const [winner, setWinner] = useState<string | null>(null);
@@ -147,12 +166,16 @@ const Perfect20Game = () => {
     if (!state) return;
 
     setPlayers(state.players);
-    setCurrentPlayer(state.players[0].name);
-    setTargetPlayer(state.players[0].name);
+    setPlayerOrder(state.playerOrder);
+    setActivePlayerName(state.activePlayerName);
+    setCurrentPlayer(state.activePlayerName);
+    setTargetPlayer(state.players.find((player) => player.name !== state.activePlayerName)?.name ?? '');
     setShowSetup(false);
     setGameLog(state.gameLog);
     setWins(state.wins);
     setCurrentGameNumber(state.currentGameNumber);
+    setWinner(state.winner);
+    setShowWinnerDialog(Boolean(state.winner));
   }, []);
 
   // Save game state to localStorage
@@ -163,39 +186,65 @@ const Perfect20Game = () => {
         players,
         gameLog,
         wins,
-        currentGameNumber
+        currentGameNumber,
+        activePlayerName,
+        winner,
+        playerOrder
       };
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(gameState));
     }
-  }, [players, gameLog, wins, currentGameNumber]);
-
-  // Check for winner whenever scores change
-  useEffect(() => {
-    const winningPlayer = players.find(player => player.score >= 20);
-    if (winningPlayer && !winner) {
-      setWinner(winningPlayer.name);
-      setShowWinnerDialog(true);
-      
-      // Log the win automatically
-      addLogEntry(`${winningPlayer.name} wins Game ${currentGameNumber}.`);
-      
-      // Update wins count
-      setWins(prev => ({
-        ...prev,
-        [winningPlayer.name]: (prev[winningPlayer.name] || 0) + 1
-      }));
-    }
-  }, [players, winner, currentGameNumber]);
+  }, [players, gameLog, wins, currentGameNumber, activePlayerName, winner, playerOrder]);
 
   const handlePlayersSetup = (playerNames: string[]) => {
     skipPersistRef.current = false;
     const newPlayers = playerNames.map(name => ({ name, score: 0 }));
     setPlayers(newPlayers);
-    setCurrentPlayer(newPlayers[0].name);
-    setTargetPlayer(newPlayers.length > 1 ? newPlayers[1].name : newPlayers[0].name);
+    setPlayerOrder(playerNames);
+    setActivePlayerName(playerNames[0]);
+    setCurrentPlayer(playerNames[0]);
+    setTargetPlayer(playerNames[1] ?? '');
+    setWinner(null);
     setActionPoints(1);
     setShowSetup(false);
     addLogEntry('Game started with players: ' + playerNames.join(', '));
+  };
+
+  const getSnapshot = (): GameSnapshot => ({
+    players,
+    playerOrder: playerOrder.length > 0 ? playerOrder : players.map((player) => player.name),
+    activePlayerName,
+    winner,
+    gameNumber: currentGameNumber,
+    gameLog
+  });
+
+  const commitAttempt = (attempt: Attempt) => {
+    const result = applyAttempt(getSnapshot(), attempt);
+    if (!result.ok) return;
+
+    setPlayers(result.snapshot.players);
+    setActivePlayerName(result.snapshot.activePlayerName);
+    setCurrentPlayer(result.snapshot.activePlayerName);
+    setWinner(result.snapshot.winner);
+    setGameLog((prev) => [
+      ...result.logDescriptions
+        .map((description, index) => ({
+          id: `${Date.now()}-${index}-${description}`,
+          timestamp: new Date(),
+          description,
+          gameNumber: currentGameNumber
+        }))
+        .reverse(),
+      ...prev
+    ]);
+
+    if (result.snapshot.winner) {
+      setShowWinnerDialog(true);
+      setWins((prev) => ({
+        ...prev,
+        [result.snapshot.winner as string]: (prev[result.snapshot.winner as string] || 0) + 1
+      }));
+    }
   };
 
   const addLogEntry = (description: string) => {
@@ -208,86 +257,28 @@ const Perfect20Game = () => {
     setGameLog(prev => [newAction, ...prev]);
   };
 
-  const updatePlayerScore = (playerName: string, newScore: number) => {
-    const adjustedScore = newScore > 20 ? 15 : Math.max(0, newScore);
-    
-    setPlayers(prev => prev.map(player => 
-      player.name === playerName 
-        ? { ...player, score: adjustedScore }
-        : player
-    ));
-
-    if (newScore > 20) {
-      addLogEntry(`${playerName}'s score went above 20 and was reset to 15.`);
-    }
-  };
-
   const canStealFrom = (stealerName: string, targetName: string) => {
     const stealer = players.find(p => p.name === stealerName);
     const target = players.find(p => p.name === targetName);
-    return stealer && target && stealer.score < target.score;
+    return Boolean(stealer && target && stealer.score < target.score);
   };
 
   const applyAction = () => {
-    if (winner) return;
-
-    const currentPlayerObj = players.find(p => p.name === currentPlayer);
-    const targetPlayerObj = players.find(p => p.name === targetPlayer);
-
-    if (!currentPlayerObj || !targetPlayerObj) return;
-
-    switch (actionType) {
-      case 'Add to Target':
-        if (currentPlayerObj.score < targetPlayerObj.score) {
-          updatePlayerScore(targetPlayer, targetPlayerObj.score + actionPoints);
-          addLogEntry(`${currentPlayer} added ${actionPoints} point${actionPoints === 1 ? '' : 's'} to ${targetPlayer}.`);
-        }
-        break;
-      
-      case 'Deduct':
-        if (currentPlayerObj.score < targetPlayerObj.score && targetPlayerObj.score >= actionPoints) {
-          updatePlayerScore(targetPlayer, targetPlayerObj.score - actionPoints);
-          addLogEntry(`${currentPlayer} deducted ${actionPoints} point${actionPoints === 1 ? '' : 's'} from ${targetPlayer}.`);
-        }
-        break;
-      
-      case 'Swap':
-        if (currentPlayerObj.score < targetPlayerObj.score) {
-          updatePlayerScore(currentPlayer, targetPlayerObj.score);
-          updatePlayerScore(targetPlayer, currentPlayerObj.score);
-          addLogEntry(`${currentPlayer} swapped scores with ${targetPlayer}.`);
-        }
-        break;
-
-      case 'Steal':
-        if (canStealFrom(currentPlayer, targetPlayer) && targetPlayerObj.score >= actionPoints) {
-          updatePlayerScore(currentPlayer, currentPlayerObj.score + actionPoints);
-          updatePlayerScore(targetPlayer, targetPlayerObj.score - actionPoints);
-          addLogEntry(`${currentPlayer} stole ${actionPoints} point${actionPoints === 1 ? '' : 's'} from ${targetPlayer}.`);
-        }
-        break;
-    }
+    commitAttempt({
+      kind: 'panel',
+      action: actionType,
+      targetName: targetPlayer,
+      points: actionPoints
+    });
   };
 
   const quickAction = (playerName: string, action: 'add' | 'deduct', points: number = 1) => {
-    if (winner) return;
-
-    const playerObj = players.find(p => p.name === playerName);
-    if (!playerObj) return;
-
-    switch (action) {
-      case 'add':
-        updatePlayerScore(playerName, playerObj.score + points);
-        addLogEntry(`${playerName} added ${points} point${points === 1 ? '' : 's'} to self.`);
-        break;
-      
-      case 'deduct':
-        if (playerObj.score >= points) {
-          updatePlayerScore(playerName, playerObj.score - points);
-          addLogEntry(`${playerName} deducted ${points} point${points === 1 ? '' : 's'} from self.`);
-        }
-        break;
-    }
+    commitAttempt({
+      kind: 'scoreboard',
+      action,
+      targetName: playerName,
+      points
+    });
   };
 
   const generateDownload = () => {
@@ -325,39 +316,23 @@ const Perfect20Game = () => {
   };
 
   const startNewGame = () => {
-    // If there's no winner yet, erase logs from current game
-    if (!winner) {
-      setGameLog(prev => prev.filter(action => action.gameNumber !== currentGameNumber));
-    } else {
-      // If there was a winner, increment game number for next game
-      setCurrentGameNumber(prev => prev + 1);
-    }
-    
-    setPlayers(prev => prev.map(player => ({ ...player, score: 0 })));
-    setWinner(null);
+    const next = startNewGameState(getSnapshot());
+    setPlayers(next.players);
+    setPlayerOrder(next.playerOrder);
+    setActivePlayerName(next.activePlayerName);
+    setCurrentPlayer(next.activePlayerName);
+    setWinner(next.winner);
+    setCurrentGameNumber(next.gameNumber);
+    setGameLog(next.gameLog);
     setShowWinnerDialog(false);
     setActionPoints(1);
-    
-    // Add log entry for new game with correct game number
-    const nextGameNumber = winner ? currentGameNumber + 1 : currentGameNumber;
-    const newAction: GameAction = {
-      id: Date.now().toString(),
-      timestamp: new Date(),
-      description: 'New game started. All scores reset to 0.',
-      gameNumber: nextGameNumber
-    };
-    setGameLog(prev => [newAction, ...prev]);
-    
-    if (!winner) {
-      // If no winner, stay on same game number
-      // Game number already set correctly above
-    } else {
-      // Game number will be incremented above
-    }
   };
 
   const resetEverything = () => {
     setPlayers([]);
+    setPlayerOrder([]);
+    setActivePlayerName('');
+    setCurrentPlayer('');
     setGameLog([]);
     setWinner(null);
     setWins({});
@@ -392,7 +367,10 @@ const Perfect20Game = () => {
             <Trophy className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-4xl font-bold text-slate-800 mb-2">Perfect 20</h1>
-          <p className="text-slate-600 mb-4">First player to reach exactly 20 points wins!</p>
+          <p className="text-slate-600 mb-2">First player to reach exactly 20 points wins!</p>
+          <p className="text-lg font-semibold text-indigo-700 mb-4" aria-live="polite">
+            {winner ? `${winner} has won this game.` : `${activePlayerName}'s turn`}
+          </p>
           
           <div className="flex justify-center gap-4 flex-wrap">
             <Button 
@@ -430,10 +408,11 @@ const Perfect20Game = () => {
               players={players} 
               onQuickAction={quickAction}
               gameEnded={!!winner}
+              activePlayerName={activePlayerName}
             />
             <ActionPanel
               players={players}
-              currentPlayer={currentPlayer}
+              currentPlayer={activePlayerName}
               setCurrentPlayer={setCurrentPlayer}
               targetPlayer={targetPlayer}
               setTargetPlayer={setTargetPlayer}
@@ -444,6 +423,7 @@ const Perfect20Game = () => {
               onApplyAction={applyAction}
               gameEnded={!!winner}
               canStealFrom={canStealFrom}
+              actorName={activePlayerName}
             />
           </div>
           

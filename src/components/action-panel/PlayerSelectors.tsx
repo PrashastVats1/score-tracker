@@ -10,6 +10,7 @@ interface PlayerSelectorsProps {
   onTargetPlayerChange: (player: string) => void;
   getAvailableTargetPlayers: () => Player[];
   gameEnded: boolean;
+  lockCurrentPlayer?: boolean;
 }
 
 const PlayerSelectors = ({
@@ -19,13 +20,18 @@ const PlayerSelectors = ({
   onCurrentPlayerChange,
   onTargetPlayerChange,
   getAvailableTargetPlayers,
-  gameEnded
+  gameEnded,
+  lockCurrentPlayer = false
 }: PlayerSelectorsProps) => {
   return (
     <>
       <div className="space-y-2">
         <label className="text-sm font-semibold text-slate-700">Current Player</label>
-        <Select value={currentPlayer} onValueChange={onCurrentPlayerChange} disabled={gameEnded}>
+        <Select
+          value={currentPlayer}
+          onValueChange={onCurrentPlayerChange}
+          disabled={gameEnded || lockCurrentPlayer}
+        >
           <SelectTrigger className="border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
             <SelectValue />
           </SelectTrigger>

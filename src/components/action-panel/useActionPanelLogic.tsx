@@ -36,41 +36,42 @@ export const useActionPanelLogic = ({
   };
 
   const handleTargetPlayerChange = (player: string) => {
-    // Don't allow same player selection
-    if (player !== currentPlayer) {
-      setTargetPlayer(player);
+    if (player === currentPlayer && actionType !== 'Add to Target') {
+      return;
     }
+    setTargetPlayer(player);
   };
 
   const getAvailableTargetPlayers = () => {
     const currentPlayerObj = players.find(p => p.name === currentPlayer);
-    const availablePlayers = players.filter(player => player.name !== currentPlayer);
+    const otherPlayers = players.filter(player => player.name !== currentPlayer);
     
     if (actionType === 'Add to Target') {
-      return availablePlayers.filter(player => 
+      const higherTargets = otherPlayers.filter(player =>
         currentPlayerObj && currentPlayerObj.score < player.score
       );
+      return currentPlayerObj ? [currentPlayerObj, ...higherTargets] : higherTargets;
     }
     
     if (actionType === 'Steal') {
-      return availablePlayers.filter(player => 
+      return otherPlayers.filter(player => 
         currentPlayerObj && currentPlayerObj.score < player.score && player.score >= actionPoints
       );
     }
     
     if (actionType === 'Deduct') {
-      return availablePlayers.filter(player => 
+      return otherPlayers.filter(player => 
         currentPlayerObj && currentPlayerObj.score < player.score && player.score >= actionPoints
       );
     }
     
     if (actionType === 'Swap') {
-      return availablePlayers.filter(player => 
+      return otherPlayers.filter(player => 
         currentPlayerObj && currentPlayerObj.score < player.score
       );
     }
     
-    return availablePlayers;
+    return otherPlayers;
   };
 
   const isActionDisabled = () => {
@@ -82,6 +83,7 @@ export const useActionPanelLogic = ({
     if (!currentPlayerObj || !targetPlayerObj) return true;
     
     if (actionType === 'Add to Target') {
+      if (currentPlayerObj.name === targetPlayerObj.name) return false;
       return currentPlayerObj.score >= targetPlayerObj.score;
     }
     
@@ -107,6 +109,9 @@ export const useActionPanelLogic = ({
     if (!currentPlayerObj || !targetPlayerObj) return '';
     
     if (actionType === 'Add to Target') {
+      if (currentPlayerObj.name === targetPlayerObj.name) {
+        return `${currentPlayer} will add ${actionPoints} point${actionPoints === 1 ? '' : 's'} to ${targetPlayer}`;
+      }
       if (currentPlayerObj.score >= targetPlayerObj.score) {
         return `${currentPlayer} cannot add points to ${targetPlayer} (your score must be lower than target)`;
       }

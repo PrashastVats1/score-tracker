@@ -20,6 +20,7 @@ interface ActionPanelProps {
   onApplyAction: () => void;
   gameEnded: boolean;
   canStealFrom: (stealer: string, target: string) => boolean;
+  actorName: string;
 }
 
 const ActionPanel = ({
@@ -34,7 +35,8 @@ const ActionPanel = ({
   setActionPoints,
   onApplyAction,
   gameEnded,
-  canStealFrom
+  canStealFrom,
+  actorName
 }: ActionPanelProps) => {
   const {
     handleCurrentPlayerChange,
@@ -44,7 +46,7 @@ const ActionPanel = ({
     getActionMessage
   } = useActionPanelLogic({
     players,
-    currentPlayer,
+    currentPlayer: actorName,
     targetPlayer,
     actionType,
     actionPoints,
@@ -71,6 +73,7 @@ const ActionPanel = ({
             onTargetPlayerChange={handleTargetPlayerChange}
             getAvailableTargetPlayers={getAvailableTargetPlayers}
             gameEnded={gameEnded}
+            lockCurrentPlayer
           />
           
           <ActionTypeSelector

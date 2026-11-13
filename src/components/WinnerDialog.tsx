@@ -2,7 +2,6 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Trophy } from 'lucide-react';
 import Confetti from './Confetti';
-import { useEffect } from 'react';
 
 interface WinnerDialogProps {
   isOpen: boolean;
@@ -12,42 +11,6 @@ interface WinnerDialogProps {
 }
 
 const WinnerDialog = ({ isOpen, winner, onNewGame, onClose }: WinnerDialogProps) => {
-  useEffect(() => {
-    if (isOpen && winner) {
-      const message = `${winner} wins Perfect 20!`;
-      
-      // Use Web Speech API to announce the winner with an Indian male voice
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(message);
-        utterance.rate = 0.9;
-        utterance.pitch = 1.0;
-        utterance.volume = 0.8;
-        
-        // Try to find an Indian male voice
-        const voices = speechSynthesis.getVoices();
-        const indianMaleVoice = voices.find(voice => 
-          voice.name.toLowerCase().includes('indian') ||
-          voice.name.toLowerCase().includes('hindi') ||
-          voice.name.toLowerCase().includes('ravi') ||
-          voice.name.toLowerCase().includes('raj') ||
-          voice.name.toLowerCase().includes('male') ||
-          (voice.lang.includes('en-IN') && voice.name.toLowerCase().includes('male')) ||
-          voice.lang.includes('en-IN') ||
-          (voice.name.toLowerCase().includes('en') && voice.name.toLowerCase().includes('male'))
-        );
-        
-        if (indianMaleVoice) {
-          utterance.voice = indianMaleVoice;
-        }
-        
-        // Small delay to ensure the dialog is visible
-        setTimeout(() => {
-          speechSynthesis.speak(utterance);
-        }, 500);
-      }
-    }
-  }, [isOpen, winner]);
-
   return (
     <>
       {isOpen && <Confetti />}

@@ -3,16 +3,17 @@ import { Plus, Minus } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Player } from './Perfect20Game';
+import { canActOnTarget, findPlayer, isSelfAdd, type Player } from '@/lib/game-rules';
 import { useState } from 'react';
 
 interface ScoreboardProps {
   players: Player[];
   onQuickAction: (playerName: string, action: 'add' | 'deduct', points?: number) => void;
   gameEnded: boolean;
+  activePlayerName: string;
 }
 
-const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
+const Scoreboard = ({ players, onQuickAction, gameEnded, activePlayerName }: ScoreboardProps) => {
   const [playerInputs, setPlayerInputs] = useState<Record<string, number>>(
     players.reduce((acc, player) => ({ ...acc, [player.name]: 1 }), {})
   );
@@ -47,8 +48,15 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
     onQuickAction(playerName, 'deduct', playerInputs[playerName]);
   };
 
-  const canDeduct = (player: Player, points: number) => {
-    return player.score >= points;
+  const actor = findPlayer(players, activePlayerName);
+
+  const canAdjust = (player: Player, action: 'add' | 'deduct', points: number) => {
+    if (gameEnded || !actor) return false;
+    if (isSelfAdd(actor.name, player.name, action === 'add')) return true;
+    if (player.name === actor.name) return false;
+    if (!canActOnTarget(actor.score, player.score)) return false;
+    if (action === 'deduct' && player.score < points) return false;
+    return true;
   };
 
   return (
@@ -63,7 +71,11 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
           {players.map((player) => (
             <div 
               key={player.name}
-              className="p-5 rounded-xl border border-slate-200 bg-white hover:shadow-md transition-all duration-200"
+              className={`p-5 rounded-xl border bg-white hover:shadow-md transition-all duration-200 ${
+                player.name === activePlayerName
+                  ? 'border-indigo-400 ring-2 ring-indigo-200'
+                  : 'border-slate-200'
+              }`}
             >
               {/* Desktop Layout */}
               <div className="hidden sm:grid sm:grid-cols-12 sm:gap-4 sm:items-center">
@@ -71,6 +83,9 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                 <div className="col-span-3">
                   <h3 className="font-medium text-slate-700 text-sm truncate" title={player.name}>
                     {player.name}
+                    {player.name === activePlayerName && !gameEnded ? (
+                      <span className="ml-2 text-xs font-semibold text-indigo-700">Turn</span>
+                    ) : null}
                   </h3>
                 </div>
                 
@@ -96,7 +111,7 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                     size="sm"
                     variant="outline"
                     onClick={() => handleAdd(player.name)}
-                    disabled={gameEnded || player.score >= 20}
+                    disabled={!canAdjust(player, 'add', playerInputs[player.name] || 1)}
                     aria-label={`Add points to ${player.name}`}
                     className="w-9 h-9 p-0 hover:bg-emerald-50 hover:border-emerald-300 border-slate-300"
                   >
@@ -124,7 +139,7 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                     size="sm"
                     variant="outline"
                     onClick={() => handleDeduct(player.name)}
-                    disabled={gameEnded || !canDeduct(player, playerInputs[player.name] || 1)}
+                    disabled={!canAdjust(player, 'deduct', playerInputs[player.name] || 1)}
                     aria-label={`Deduct points from ${player.name}`}
                     className="w-9 h-9 p-0 hover:bg-red-50 hover:border-red-300 border-slate-300"
                   >
@@ -139,6 +154,9 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                 <div className="mb-4 h-8 flex items-center">
                   <h3 className="font-medium text-slate-700 text-base truncate" title={player.name}>
                     {player.name}
+                    {player.name === activePlayerName && !gameEnded ? (
+                      <span className="ml-2 text-xs font-semibold text-indigo-700">Turn</span>
+                    ) : null}
                   </h3>
                 </div>
                 
@@ -161,7 +179,7 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                       size="sm"
                       variant="outline"
                       onClick={() => handleAdd(player.name)}
-                      disabled={gameEnded || player.score >= 20}
+                      disabled={!canAdjust(player, 'add', playerInputs[player.name] || 1)}
                       aria-label={`Add points to ${player.name}`}
                       className="w-10 h-10 p-0 hover:bg-emerald-50 hover:border-emerald-300 border-slate-300"
                     >
@@ -189,7 +207,7 @@ const Scoreboard = ({ players, onQuickAction, gameEnded }: ScoreboardProps) => {
                       size="sm"
                       variant="outline"
                       onClick={() => handleDeduct(player.name)}
-                      disabled={gameEnded || !canDeduct(player, playerInputs[player.name] || 1)}
+                      disabled={!canAdjust(player, 'deduct', playerInputs[player.name] || 1)}
                       aria-label={`Deduct points from ${player.name}`}
                       className="w-10 h-10 p-0 hover:bg-red-50 hover:border-red-300 border-slate-300"
                     >
